@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+# configuration:
+nick="gitbot"
+server="192.168.1.3"
+port="6667"
+channels="#entropixel"
+
+# don't mess with this unless you have to:
+[ -d /tmp/gitbot ] && echo "run directory exists" && exit 1
+mkdir -p /tmp/gitbot
+inpipe="/tmp/gitbot/pipe"
+tailout="/tmp/gitbot/tail"
+ncout="/tmp/gitbot/nc"
+pidfile="/tmp/gitbot/pid"
+
+# write channels (for the git hook)
+echo "$channels" > /tmp/gitbot/channels
+
+# make input pipe
+mkfifo "$inpipe"
+mkfifo "$tailout"
+mkfifo "$ncout"
+
+# get netcat command, or telnet
+netcat="$(which nc || which netcat || which telnet)"
+
+cleanup () {
+	echo "exiting"
+	trap '' SIGTERM
+	kill 0
+	rm -r /tmp/gitbot
+	exit 0
+}
+
+connattempts=0
+parse () {
+	printf ">> \033[0;33m$1\033[0m\n"
+
+	# look for ping
+	egrep -q "^PING" <<< "$1" && sed 's/PING/PONG/' <<< "$1" >> "$inpipe" && echo >> "$inpipe"
+
+	# look for end of MOTD
+	egrep -q "^:[^ ]* 376" <<< "$1" && for channel in $channels ; do
+		echo "JOIN $channel" >> "$inpipe"
+	done && connattempts=0
+}
+
+conn () {
+	# don't let tailout get closed
+	tail -f "$inpipe" > "$tailout" &
+
+	# connect
+	while true ; do
+		if [ $((connattempts++)) -lt 5 ] ; then
+			# prepare login
+			echo "NICK $nick" >> "$inpipe" &
+			 echo "USER $nick 8 * :$nick" >> "$inpipe" &
+
+			"$netcat" "$server" "$port" < "$tailout" > "$ncout"
+		else
+			cleanup
+		fi
+	done &
+
+	# loop, parsing everything we receive from netcat
+	while read l ; do
+		parse "$l"
+	done < "$ncout"
+
+	return 0
+}
+
+initialize () {
+	# make sure cleanup runs when killed
+	trap cleanup SIGTERM
+	trap cleanup SIGINT
+
+	conn
+}
+
+# daemonize
+if [ "$1" = "-d" ] ; then
+	initialize > /dev/null 2>&1 & echo $! > "$pidfile" & disown && exit 0
+fi
+
+echo $$ > "$pidfile"
+
+# otherwise, run and wait for a manual exit
+initialize

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# repo name
+repo="$(basename "$(pwd)" | sed 's/\.git$//')"
+
+while read old new ref ; do
+	# branch name
+	branch="$(sed 's,refs/heads/,,' <<< $ref)"
+
+	# check for new branch
+	if [ "$old" = '0000000000000000000000000000000000000000' ] ; then
+		commits="$(git for-each-ref --format='%(refname)' 'refs/heads/*' \
+		| grep -v "$ref" | sed 's/^/\^/') $new"
+		printf "[\00303%s\003] new branch \00305%s\003" "$repo" "$branch"
+		echo
+	else
+		commits="${old}..${new}"
+	fi
+
+	ncommits="$(git log --pretty=oneline $commits | wc -l | sed 's/^[^0-9]*//')"
+
+	for channel in $(</tmp/gitbot/channels) ; do
+		while read msg ; do
+			echo "PRIVMSG $channel :$msg"
+		done < \
+		<(git log --format="[%x0303${repo}%x03][%x0305${branch}%x03] %x0306%an%x03 %x0307%h%x03 - %s" $commits \
+		--reverse | tail -n5)
+		if [ "$ncommits" -gt 5 ] ; then
+			printf "PRIVMSG %s :(%i commit(s) ommitted)" "$channel" "$((ncommits - 5))"
+			echo
+		fi
+	done
+done > /tmp/gitbot/pipe
