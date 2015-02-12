@@ -42,7 +42,7 @@ conn () {
 
 	# connect
 	while true ; do
-		if [ $((connattempts++)) -lt 5 ] ; then
+		if [ $((connattempts += 1)) -lt 5 ] ; then
 			# prepare login
 			echo "NICK $nick" >> "$inpipe" &
 			echo "USER $nick 8 * :$nick" >> "$inpipe" &
