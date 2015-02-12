@@ -1,4 +1,4 @@
-#!/bin/mksh
+#!/bin/sh
 
 repo="$(basename "$(pwd)" | sed 's/\.git$//')"
 
