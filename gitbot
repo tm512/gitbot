@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/mksh
 
 # configuration:
 nick="gitbot"
@@ -7,20 +7,10 @@ port="6667"
 channels="#entropixel"
 
 # don't mess with this unless you have to:
-[ -d /tmp/gitbot ] && echo "run directory exists" && exit 1
-mkdir -p /tmp/gitbot
 inpipe="/tmp/gitbot/pipe"
 tailout="/tmp/gitbot/tail"
 ncout="/tmp/gitbot/nc"
 pidfile="/tmp/gitbot/pid"
-
-# write channels (for the git hook)
-echo "$channels" > /tmp/gitbot/channels
-
-# make input pipe
-mkfifo "$inpipe"
-mkfifo "$tailout"
-mkfifo "$ncout"
 
 # get netcat command, or telnet
 netcat="$(which nc || which netcat || which telnet)"
@@ -38,10 +28,10 @@ parse () {
 	printf ">> \033[0;33m$1\033[0m\n"
 
 	# look for ping
-	egrep -q "^PING" <<< "$1" && sed 's/PING/PONG/' <<< "$1" >> "$inpipe" && echo >> "$inpipe"
+	echo "$1" | egrep -q "^PING" && echo "${1/PING/PONG}" >> "$inpipe" && echo >> "$inpipe"
 
 	# look for end of MOTD
-	egrep -q "^:[^ ]* 376" <<< "$1" && for channel in $channels ; do
+	echo "$1" | egrep -q "^:[^ ]* 376" && for channel in $channels ; do
 		echo "JOIN $channel" >> "$inpipe"
 	done && connattempts=0
 }
@@ -55,7 +45,7 @@ conn () {
 		if [ $((connattempts++)) -lt 5 ] ; then
 			# prepare login
 			echo "NICK $nick" >> "$inpipe" &
-			 echo "USER $nick 8 * :$nick" >> "$inpipe" &
+			echo "USER $nick 8 * :$nick" >> "$inpipe" &
 
 			"$netcat" "$server" "$port" < "$tailout" > "$ncout"
 		else
@@ -76,15 +66,28 @@ initialize () {
 	trap cleanup SIGTERM
 	trap cleanup SIGINT
 
+	# set up run directory
+	[ -d /tmp/gitbot ] && echo "run directory exists" && exit 1
+	mkdir -p /tmp/gitbot
+
+	# write channels (for the git hook)
+	echo "$channels" > /tmp/gitbot/channels
+
+	# make input pipes
+	mkfifo "$inpipe"
+	mkfifo "$tailout"
+	mkfifo "$ncout"
+
+	echo "$$" > "$pidfile"
+
+	# connect to IRC
 	conn
 }
 
 # daemonize
 if [ "$1" = "-d" ] ; then
-	initialize > /dev/null 2>&1 & echo $! > "$pidfile" & disown && exit 0
+	nohup "$0" > /dev/null 2>&1 < /dev/null &
+	exit 0
 fi
 
-echo $$ > "$pidfile"
-
-# otherwise, run and wait for a manual exit
 initialize

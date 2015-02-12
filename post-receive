@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
+#!/bin/mksh
 
-# repo name
 repo="$(basename "$(pwd)" | sed 's/\.git$//')"
 
 while read old new ref ; do
 	# branch name
-	branch="$(sed 's,refs/heads/,,' <<< $ref)"
+	branch="$(echo "$ref" | sed 's,refs/heads/,,')"
+	fmt="[%x0303${repo}%x03][%x0305${branch}%x03] %x0306%an%x03 %x0307%h%x03 - %s"
 
 	# check for new branch
 	if [ "$old" = '0000000000000000000000000000000000000000' ] ; then
@@ -19,12 +19,11 @@ while read old new ref ; do
 
 	ncommits="$(git log --pretty=oneline $commits | wc -l | sed 's/^[^0-9]*//')"
 
-	for channel in $(</tmp/gitbot/channels) ; do
-		while read msg ; do
+	for channel in $(cat /tmp/gitbot/channels) ; do
+		git log --format="$fmt" $commits --reverse | tail -n5 | while read msg ; do
 			echo "PRIVMSG $channel :$msg"
-		done < \
-		<(git log --format="[%x0303${repo}%x03][%x0305${branch}%x03] %x0306%an%x03 %x0307%h%x03 - %s" $commits \
-		--reverse | tail -n5)
+		done
+
 		if [ "$ncommits" -gt 5 ] ; then
 			printf "PRIVMSG %s :(%i commit(s) ommitted)" "$channel" "$((ncommits - 5))"
 			echo
