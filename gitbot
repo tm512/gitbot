@@ -65,6 +65,7 @@ initialize () {
 	# make sure cleanup runs when killed
 	trap cleanup SIGTERM
 	trap cleanup SIGINT
+	trap cleanup SIGHUP
 
 	# set up run directory
 	[ -d /tmp/gitbot ] && echo "run directory exists" && exit 1
