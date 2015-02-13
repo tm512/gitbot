@@ -28,7 +28,7 @@ parse () {
 	printf ">> \033[0;33m%s\033[0m\n" "$1"
 
 	# look for ping
-	echo "$1" | egrep -q "^PING" && echo "${1/PING/PONG}" >> "$inpipe" && echo >> "$inpipe"
+	echo "$1" | egrep -q "^PING" && echo "$1" | sed 's/PING/PONG/' >> "$inpipe" && echo >> "$inpipe"
 
 	# look for end of MOTD
 	echo "$1" | egrep -q "^:[^ ]* 376" && for channel in $channels ; do
